@@ -69,11 +69,11 @@ ${TAXONOMY.map((c) => `- "${c}"`).join('\n')}
 INSTRUCTIONS:
 1. "primaryCategory": Choose the best matching category from the list above. If unsure or insufficient content, choose "Unknown" or "Other".
 2. "secondaryCategories": Array of 0-2 secondary categories if applicable.
-3. "description": A concise, factual 1-2 sentence description of what this document is.
-${req.generateSummary ? '4. "summary": A concise 2-4 sentence summary of the key content (no filler, preserve technical terms).' : '4. "summary": null.'}
+3. "description": A concise, factual 1-sentence statement of file purpose.
+4. "summary": null
 5. "confidence": A number from 0.0 to 1.0 representing confidence.
 6. "confidenceLabel": One of: "High", "Medium", "Low", "Estimated", "Unknown".
-7. "evidence": Array of 1-3 concise factual reasons/quotes from the text explaining why this category was assigned.
+7. "evidence": Array of 1-3 concise factual reasons/clues from the text explaining why this category was assigned.
 8. "detectedLanguage": ISO language code or name (e.g. "en", "ar", "fr", "code").
 
 RETURN ONLY A STRICT VALID JSON OBJECT matching this structure:
@@ -81,7 +81,7 @@ RETURN ONLY A STRICT VALID JSON OBJECT matching this structure:
   "primaryCategory": string,
   "secondaryCategories": string[],
   "description": string,
-  "summary": string | null,
+  "summary": null,
   "confidence": number,
   "confidenceLabel": "High" | "Medium" | "Low" | "Estimated" | "Unknown",
   "evidence": string[],

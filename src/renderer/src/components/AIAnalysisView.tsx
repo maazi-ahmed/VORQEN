@@ -65,7 +65,7 @@ export const AIAnalysisView: React.FC = () => {
   const [isTesting, setIsTesting] = useState<boolean>(false)
 
   // Options State
-  const [generateSummaries, setGenerateSummaries] = useState<boolean>(true)
+  const [generateSummaries] = useState<boolean>(false)
   const [forceReanalyze, setForceReanalyze] = useState<boolean>(false)
   const [userConsent, setUserConsent] = useState<boolean>(false)
 
@@ -287,20 +287,11 @@ export const AIAnalysisView: React.FC = () => {
             />
             <span style={{ color: userConsent ? 'var(--text-primary)' : 'var(--accent-amber)', fontWeight: 500 }}>
               <ShieldCheck size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'text-bottom' }} />
-              I consent to sending selected document text snippets to Google AI for semantic analysis & summarization.
+              I consent to sending selected document text snippets for direct semantic classification.
             </span>
           </label>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={generateSummaries}
-                onChange={(e) => setGenerateSummaries(e.target.checked)}
-              />
-              <span style={{ color: 'var(--text-secondary)' }}>Generate Summaries</span>
-            </label>
-
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -493,7 +484,7 @@ export const AIAnalysisView: React.FC = () => {
                   <th>Document Name & Path</th>
                   <th>Semantic Category</th>
                   <th>Confidence</th>
-                  <th>AI Summary / Description</th>
+                  <th>Purpose & Classification Evidence</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -543,9 +534,14 @@ export const AIAnalysisView: React.FC = () => {
                       </span>
                     </td>
                     <td style={{ maxWidth: '380px' }}>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)' }}>
-                        {rec.summary || rec.description}
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {rec.description}
                       </div>
+                      {rec.evidence && rec.evidence.length > 0 && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                          Evidence: {rec.evidence.slice(0, 2).join(' • ')}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <button
