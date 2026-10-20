@@ -23,7 +23,7 @@ export class AnalysisCoordinator {
 
   private provider: AIProvider
   private customApiKey?: string
-  private customModel = 'gemini-1.5-flash'
+  private customModel = 'gemma-4-31b-it'
   private userConsentGranted = false
   private storage: AnalysisStorageService
 

@@ -106,7 +106,7 @@ export class GeminiAIProvider implements AIProvider {
   private apiKey: string
   private model: string
 
-  constructor(apiKey: string, model = 'gemini-1.5-flash') {
+  constructor(apiKey: string, model = 'gemma-4-31b-it') {
     this.apiKey = apiKey.trim()
     this.model = model.trim().replace(/^models\//, '')
   }
@@ -142,9 +142,30 @@ export class GeminiAIProvider implements AIProvider {
         ? data.models.map((m: { name: string }) => m.name.replace(/^models\//, ''))
         : []
 
+      // Test active generation with current model
+      const probeModel = this.model || 'gemma-4-31b-it'
+      const probeUrl = `https://generativelanguage.googleapis.com/v1beta/models/${probeModel}:generateContent?key=${this.apiKey}`
+      const probeRes = await fetch(probeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Respond with OK' }] }]
+        })
+      })
+
+      if (!probeRes.ok) {
+        const probeData = await probeRes.json().catch(() => ({}))
+        const probeMsg = probeData.error?.message || `HTTP ${probeRes.status}`
+        return {
+          ok: false,
+          message: `API Key accepted by Google, but generation on model "${probeModel}" returned: ${probeMsg}. If project is denied, please create a new key in aistudio.google.com.`,
+          models: available
+        }
+      }
+
       return {
         ok: true,
-        message: `Successfully connected. ${available.length} models available.`,
+        message: `Successfully connected and verified generation with ${probeModel}! (${available.length} models available)`,
         models: available
       }
     } catch (err: unknown) {
@@ -167,6 +188,15 @@ export class GeminiAIProvider implements AIProvider {
     const maxAttempts = 3
     let lastError: Error | null = null
 
+    const isGemma = this.model.toLowerCase().includes('gemma')
+    const generationConfig: Record<string, unknown> = {
+      temperature: 0.1
+    }
+    // Only pass responseMimeType on models that support it natively (e.g. Gemini)
+    if (!isGemma) {
+      generationConfig.responseMimeType = 'application/json'
+    }
+
     while (attempts < maxAttempts) {
       attempts++
       try {
@@ -176,16 +206,13 @@ export class GeminiAIProvider implements AIProvider {
           signal: req.signal,
           body: JSON.stringify({
             contents: [{ parts: [{ text: promptText }] }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.1
-            }
+            generationConfig
           })
         })
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}))
-          const message = errData.error?.message || `HTTP ${response.status} from Gemini API`
+          const message = errData.error?.message || `HTTP ${response.status} from API`
 
           // Retry on transient 429 (rate limit) or 503 (service unavailable)
           if ((response.status === 429 || response.status === 503) && attempts < maxAttempts) {

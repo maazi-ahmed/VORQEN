@@ -55,12 +55,12 @@ export const AIAnalysisView: React.FC = () => {
   const [settings, setSettings] = useState<AISettings>({
     provider: 'gemini',
     apiKeyConfigured: false,
-    model: 'gemini-1.5-flash',
+    model: 'gemma-4-31b-it',
     consentGranted: false
   })
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false)
   const [inputApiKey, setInputApiKey] = useState<string>('')
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-1.5-flash')
+  const [selectedModel, setSelectedModel] = useState<string>('gemma-4-31b-it')
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [isTesting, setIsTesting] = useState<boolean>(false)
 
@@ -592,7 +592,7 @@ export const AIAnalysisView: React.FC = () => {
 
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                  Gemini Model
+                  AI / LLM Model
                 </label>
                 <select
                   className="select-dropdown"
@@ -600,10 +600,12 @@ export const AIAnalysisView: React.FC = () => {
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                 >
-                  <option value="gemini-1.5-flash">gemini-1.5-flash (Fast & Recommended)</option>
-                  <option value="gemini-1.5-pro">gemini-1.5-pro (High Reasoning)</option>
-                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                  <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                  <option value="gemma-4-31b-it">gemma-4-31b-it (Best Gemma Model — 31B IT)</option>
+                  <option value="gemma-4-26b-a4b-it">gemma-4-26b-a4b-it (Gemma 4 — 26B)</option>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Efficient)</option>
+                  <option value="gemini-2.5-pro">gemini-2.5-pro (High Reasoning)</option>
+                  <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                  <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                 </select>
               </div>
 
