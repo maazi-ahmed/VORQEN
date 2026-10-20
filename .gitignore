@@ -3,6 +3,8 @@ out
 dist
 dist-electron
 *.local
+.env
+.env.*
 .vscode/*
 !.vscode/extensions.json
 .idea
