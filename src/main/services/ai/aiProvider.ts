@@ -231,7 +231,7 @@ export class GeminiAIProvider implements AIProvider {
         }
 
         // Parse and validate structured output
-        const parsed = this.validateAndSanitizeResponse(rawJsonText)
+        const parsed = parseAIClassificationJson(rawJsonText)
 
         return {
           ...parsed,
@@ -255,79 +255,250 @@ export class GeminiAIProvider implements AIProvider {
     throw lastError || new Error('Failed to classify document after retries')
   }
 
-  private validateAndSanitizeResponse(rawText: string): {
-    primaryCategory: SemanticCategory
-    secondaryCategories: SemanticCategory[]
-    description: string
-    summary?: string
-    confidence: number
-    confidenceLabel: 'High' | 'Medium' | 'Low' | 'Estimated' | 'Unknown'
-    evidence: string[]
-    detectedLanguage?: string
-  } {
-    let cleanJson = rawText.trim()
-    // Strip markdown code fences if model wrapped response
-    cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+  public validateAndSanitizeResponse(rawText: string) {
+    return parseAIClassificationJson(rawText)
+  }
+}
 
-    let obj: any
+/**
+ * OpenRouter AI Provider for multi-model access (including free Gemma 4 models)
+ */
+export class OpenRouterAIProvider implements AIProvider {
+  private apiKey: string
+  private model: string
+
+  constructor(apiKey: string, model = 'google/gemma-4-31b-it:free') {
+    this.apiKey = apiKey.trim()
+    this.model = model.trim()
+  }
+
+  public setApiKey(key: string): void {
+    this.apiKey = key.trim()
+  }
+
+  public setModel(model: string): void {
+    this.model = model.trim()
+  }
+
+  public getModel(): string {
+    return this.model
+  }
+
+  public async testConnection(): Promise<{ ok: boolean; message: string; models?: string[] }> {
+    if (!this.apiKey) {
+      return { ok: false, message: 'OpenRouter API Key is not configured.' }
+    }
+
     try {
-      obj = JSON.parse(cleanJson)
-    } catch {
-      throw new Error(`Failed to parse AI response as JSON: ${cleanJson.slice(0, 150)}...`)
-    }
+      const authRes = await fetch('https://openrouter.ai/api/v1/auth/key', {
+        headers: { Authorization: `Bearer ${this.apiKey}` }
+      })
+      const authData = await authRes.json()
 
-    // Validate category against taxonomy
-    let primaryCategory: SemanticCategory = 'Unknown'
-    if (typeof obj.primaryCategory === 'string' && TAXONOMY.includes(obj.primaryCategory as SemanticCategory)) {
-      primaryCategory = obj.primaryCategory as SemanticCategory
-    } else {
-      // Fuzzy fallback
-      const found = TAXONOMY.find(
-        (t) => t.toLowerCase() === String(obj.primaryCategory).toLowerCase()
-      )
-      primaryCategory = found || 'Other'
-    }
+      if (!authRes.ok) {
+        const errorMsg = authData.error?.message || `HTTP ${authRes.status}: Connection failed`
+        return { ok: false, message: errorMsg }
+      }
 
-    const secondaryCategories = Array.isArray(obj.secondaryCategories)
-      ? obj.secondaryCategories.filter((c: any) => typeof c === 'string' && TAXONOMY.includes(c as SemanticCategory))
-      : []
+      const freeRem = authData.data?.free_model_daily_requests?.remaining ?? 1000
 
-    const description = typeof obj.description === 'string' && obj.description.trim().length > 0
-      ? obj.description.trim()
-      : `Classified as ${primaryCategory}`
+      // Probe generation with the chosen model
+      const probeRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://github.com/maazi-ahmed/VORQEN',
+          'X-Title': 'VORQEN'
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [{ role: 'user', content: 'Respond with OK' }]
+        })
+      })
 
-    const summary = typeof obj.summary === 'string' && obj.summary.trim().length > 0
-      ? obj.summary.trim()
-      : undefined
+      const probeData = await probeRes.json().catch(() => ({}))
+      if (!probeRes.ok) {
+        const errMsg = probeData.error?.message || `HTTP ${probeRes.status}`
+        const rawHint = probeData.error?.metadata?.raw || ''
+        return {
+          ok: false,
+          message: `Key valid, but model ${this.model} returned: ${errMsg}. ${rawHint ? '(' + rawHint + ')' : ''}`
+        }
+      }
 
-    const confidence = typeof obj.confidence === 'number' && obj.confidence >= 0 && obj.confidence <= 1
-      ? parseFloat(obj.confidence.toFixed(2))
-      : 0.5
-
-    const validLabels = ['High', 'Medium', 'Low', 'Estimated', 'Unknown'] as const
-    const confidenceLabel = validLabels.includes(obj.confidenceLabel)
-      ? obj.confidenceLabel
-      : confidence >= 0.8
-        ? 'High'
-        : confidence >= 0.5
-          ? 'Medium'
-          : 'Low'
-
-    const evidence = Array.isArray(obj.evidence)
-      ? obj.evidence.filter((e: any) => typeof e === 'string' && e.trim().length > 0)
-      : []
-
-    return {
-      primaryCategory,
-      secondaryCategories,
-      description,
-      summary,
-      confidence,
-      confidenceLabel,
-      evidence,
-      detectedLanguage: typeof obj.detectedLanguage === 'string' ? obj.detectedLanguage : undefined
+      return {
+        ok: true,
+        message: `Successfully connected to OpenRouter using ${this.model}! (${freeRem} free daily requests available)`
+      }
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : 'Network error connecting to OpenRouter'
+      }
     }
   }
+
+  public async classifyAndSummarize(req: ClassificationRequest): Promise<ClassificationResult> {
+    if (!this.apiKey) {
+      throw new Error('OpenRouter API Key is missing. Configure it in .env or Settings.')
+    }
+
+    const promptText = buildPrompt(req)
+    const endpoint = 'https://openrouter.ai/api/v1/chat/completions'
+
+    let attempts = 0
+    const maxAttempts = 4
+    let lastError: Error | null = null
+
+    while (attempts < maxAttempts) {
+      attempts++
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://github.com/maazi-ahmed/VORQEN',
+            'X-Title': 'VORQEN'
+          },
+          signal: req.signal,
+          body: JSON.stringify({
+            model: this.model,
+            messages: [{ role: 'user', content: promptText }],
+            temperature: 0.1
+          })
+        })
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}))
+          const message = errData.error?.message || errData.error?.metadata?.raw || `HTTP ${response.status} from OpenRouter`
+
+          // Retry on transient 429 (rate limit) or 503
+          if ((response.status === 429 || response.status === 503) && attempts < maxAttempts) {
+            await new Promise((res) => setTimeout(res, 2000 * Math.pow(2, attempts - 1)))
+            continue
+          }
+
+          throw new Error(message)
+        }
+
+        const data = await response.json()
+        const rawJsonText = data.choices?.[0]?.message?.content
+
+        if (!rawJsonText) {
+          throw new Error('Received empty response payload from OpenRouter model')
+        }
+
+        const parsed = parseAIClassificationJson(rawJsonText)
+
+        return {
+          ...parsed,
+          modelUsed: this.model,
+          promptVersion: PROMPT_VERSION,
+          tokensUsed: {
+            input: data.usage?.prompt_tokens || 0,
+            output: data.usage?.completion_tokens || 0
+          }
+        }
+      } catch (err: unknown) {
+        if (req.signal?.aborted) {
+          throw new Error('Analysis request was cancelled by user')
+        }
+        lastError = err instanceof Error ? err : new Error(String(err))
+        if (attempts >= maxAttempts) break
+        await new Promise((res) => setTimeout(res, 1500 * attempts))
+      }
+    }
+
+    throw lastError || new Error('Failed to classify document via OpenRouter after retries')
+  }
+}
+
+/**
+ * Parses and validates raw JSON output from any LLM provider into typed classification result
+ */
+export function parseAIClassificationJson(rawText: string): {
+  primaryCategory: SemanticCategory
+  secondaryCategories: SemanticCategory[]
+  description: string
+  summary?: string
+  confidence: number
+  confidenceLabel: 'High' | 'Medium' | 'Low' | 'Estimated' | 'Unknown'
+  evidence: string[]
+  detectedLanguage?: string
+} {
+  let cleanJson = rawText.trim()
+  cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+
+  let obj: any
+  try {
+    obj = JSON.parse(cleanJson)
+  } catch {
+    throw new Error(`Failed to parse AI response as JSON: ${cleanJson.slice(0, 150)}...`)
+  }
+
+  // Validate category against taxonomy
+  let primaryCategory: SemanticCategory = 'Unknown'
+  if (typeof obj.primaryCategory === 'string' && TAXONOMY.includes(obj.primaryCategory as SemanticCategory)) {
+    primaryCategory = obj.primaryCategory as SemanticCategory
+  } else {
+    const found = TAXONOMY.find(
+      (t) => t.toLowerCase() === String(obj.primaryCategory).toLowerCase()
+    )
+    primaryCategory = found || 'Other'
+  }
+
+  const secondaryCategories = Array.isArray(obj.secondaryCategories)
+    ? obj.secondaryCategories.filter((c: any) => typeof c === 'string' && TAXONOMY.includes(c as SemanticCategory))
+    : []
+
+  const description = typeof obj.description === 'string' && obj.description.trim().length > 0
+    ? obj.description.trim()
+    : `Classified as ${primaryCategory}`
+
+  const summary = typeof obj.summary === 'string' && obj.summary.trim().length > 0
+    ? obj.summary.trim()
+    : undefined
+
+  const confidence = typeof obj.confidence === 'number' && obj.confidence >= 0 && obj.confidence <= 1
+    ? parseFloat(obj.confidence.toFixed(2))
+    : 0.5
+
+  const validLabels = ['High', 'Medium', 'Low', 'Estimated', 'Unknown'] as const
+  const confidenceLabel = validLabels.includes(obj.confidenceLabel)
+    ? obj.confidenceLabel
+    : confidence >= 0.8
+      ? 'High'
+      : confidence >= 0.5
+        ? 'Medium'
+        : 'Low'
+
+  const evidence = Array.isArray(obj.evidence)
+    ? obj.evidence.filter((e: any) => typeof e === 'string' && e.trim().length > 0)
+    : []
+
+  return {
+    primaryCategory,
+    secondaryCategories,
+    description,
+    summary,
+    confidence,
+    confidenceLabel,
+    evidence,
+    detectedLanguage: typeof obj.detectedLanguage === 'string' ? obj.detectedLanguage : undefined
+  }
+}
+
+/**
+ * Universal AI Provider factory
+ */
+export function createAIProvider(apiKey: string, model?: string): AIProvider {
+  const trimmed = apiKey.trim()
+  if (trimmed.startsWith('sk-or-')) {
+    return new OpenRouterAIProvider(trimmed, model || 'google/gemma-4-31b-it:free')
+  }
+  return new GeminiAIProvider(trimmed, model || 'gemma-4-31b-it')
 }
 
 /**

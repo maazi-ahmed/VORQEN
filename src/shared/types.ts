@@ -437,7 +437,7 @@ export interface AnalysisJobSummary {
 }
 
 export interface AISettings {
-  provider: 'gemini' | 'mock'
+  provider: 'gemini' | 'openrouter' | 'mock'
   apiKeyConfigured: boolean
   model: string
   consentGranted: boolean

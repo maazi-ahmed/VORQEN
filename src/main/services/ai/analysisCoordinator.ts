@@ -10,7 +10,7 @@ import {
   FileInventoryRecord
 } from '../../../shared/types'
 import { scanCoordinator } from '../scanner/scanCoordinator'
-import { AIProvider, GeminiAIProvider } from './aiProvider'
+import { AIProvider, createAIProvider } from './aiProvider'
 
 import { analysisStorage, AnalysisStorageService } from './analysisStorage'
 import { extractFileContent, isFormatSupported } from './contentExtractor'
@@ -23,7 +23,7 @@ export class AnalysisCoordinator {
 
   private provider: AIProvider
   private customApiKey?: string
-  private customModel = 'gemma-4-31b-it'
+  private customModel = 'google/gemma-4-31b-it:free'
   private userConsentGranted = false
   private storage: AnalysisStorageService
 
@@ -31,16 +31,35 @@ export class AnalysisCoordinator {
     this.storage = customStorage || analysisStorage
 
     // Auto-load API key from environment if present
-    const envKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || ''
-    this.provider = new GeminiAIProvider(envKey, this.customModel)
+    const envKey =
+      process.env.OPENROUTER_API_KEY ||
+      process.env.AI_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_AI_API_KEY ||
+      ''
+
+    if (envKey.startsWith('sk-or-')) {
+      this.customModel = 'google/gemma-4-31b-it:free'
+    } else if (envKey) {
+      this.customModel = 'gemma-4-31b-it'
+    }
+
+    this.provider = createAIProvider(envKey, this.customModel)
   }
 
   public getSettings(): AISettings {
-    const hasEnvKey = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY)
-    const hasKey = Boolean(this.customApiKey || hasEnvKey)
+    const envKey =
+      process.env.OPENROUTER_API_KEY ||
+      process.env.AI_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_AI_API_KEY ||
+      ''
+    const effectiveKey = this.customApiKey || envKey
+    const hasKey = Boolean(effectiveKey)
+    const isOr = effectiveKey.startsWith('sk-or-')
 
     return {
-      provider: 'gemini',
+      provider: isOr ? 'openrouter' : 'gemini',
       apiKeyConfigured: hasKey,
       model: this.customModel,
       consentGranted: this.userConsentGranted
@@ -53,17 +72,22 @@ export class AnalysisCoordinator {
   } {
     if (typeof settings.apiKey === 'string') {
       this.customApiKey = settings.apiKey.trim()
-      if (this.provider instanceof GeminiAIProvider) {
-        this.provider.setApiKey(this.customApiKey)
-      }
     }
 
     if (typeof settings.model === 'string' && settings.model.trim().length > 0) {
       this.customModel = settings.model.trim()
-      if (this.provider instanceof GeminiAIProvider) {
-        this.provider.setModel(this.customModel)
-      }
     }
+
+    const envKey =
+      process.env.OPENROUTER_API_KEY ||
+      process.env.AI_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_AI_API_KEY ||
+      ''
+    const effectiveKey = this.customApiKey || envKey
+
+    // Recreate or update provider
+    this.provider = createAIProvider(effectiveKey, this.customModel)
 
     if (typeof settings.consentGranted === 'boolean') {
       this.userConsentGranted = settings.consentGranted

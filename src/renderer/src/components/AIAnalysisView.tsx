@@ -53,14 +53,14 @@ function getCategoryColor(category: SemanticCategory): string {
 export const AIAnalysisView: React.FC = () => {
   // Settings & Configuration State
   const [settings, setSettings] = useState<AISettings>({
-    provider: 'gemini',
+    provider: 'openrouter',
     apiKeyConfigured: false,
-    model: 'gemma-4-31b-it',
+    model: 'google/gemma-4-31b-it:free',
     consentGranted: false
   })
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false)
   const [inputApiKey, setInputApiKey] = useState<string>('')
-  const [selectedModel, setSelectedModel] = useState<string>('gemma-4-31b-it')
+  const [selectedModel, setSelectedModel] = useState<string>('google/gemma-4-31b-it:free')
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [isTesting, setIsTesting] = useState<boolean>(false)
 
@@ -600,12 +600,12 @@ export const AIAnalysisView: React.FC = () => {
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                 >
-                  <option value="gemma-4-31b-it">gemma-4-31b-it (Best Gemma Model — 31B IT)</option>
-                  <option value="gemma-4-26b-a4b-it">gemma-4-26b-a4b-it (Gemma 4 — 26B)</option>
-                  <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Efficient)</option>
-                  <option value="gemini-2.5-pro">gemini-2.5-pro (High Reasoning)</option>
-                  <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                  <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                  <option value="google/gemma-4-31b-it:free">Google: Gemma 4 31B (free) — OpenRouter</option>
+                  <option value="google/gemma-4-26b-a4b-it:free">Google: Gemma 4 26B (free) — OpenRouter</option>
+                  <option value="minimax/minimax-m3.1-flash:free">MiniMax M3.1 Flash (free) — OpenRouter</option>
+                  <option value="nvidia/nemotron-3.5-lightning:free">NVIDIA Nemotron 3.5 (free) — OpenRouter</option>
+                  <option value="gemma-4-31b-it">gemma-4-31b-it (Google AI Studio Direct)</option>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash (Google AI Studio Direct)</option>
                 </select>
               </div>
 
