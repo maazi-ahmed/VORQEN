@@ -19,7 +19,9 @@ import {
   Eye,
   Key,
   Activity,
-  FileQuestion
+  FileQuestion,
+  Folder,
+  FolderPlus
 } from 'lucide-react'
 
 
@@ -65,6 +67,7 @@ export const AIAnalysisView: React.FC = () => {
   const [isTesting, setIsTesting] = useState<boolean>(false)
 
   // Options State
+  const [targetFolder, setTargetFolder] = useState<string>('all')
   const [generateSummaries] = useState<boolean>(false)
   const [forceReanalyze, setForceReanalyze] = useState<boolean>(false)
   const [userConsent, setUserConsent] = useState<boolean>(false)
@@ -143,6 +146,7 @@ export const AIAnalysisView: React.FC = () => {
     }
 
     const options: AnalysisJobOptions = {
+      targetFolder: targetFolder !== 'all' ? targetFolder : undefined,
       generateSummaries,
       forceReanalyze,
       maxConcurrency: 3,
@@ -261,6 +265,60 @@ export const AIAnalysisView: React.FC = () => {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Target Folder Selector Bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            marginBottom: '12px',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-md)',
+            background: 'rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.08)'
+          }}
+        >
+          <Folder size={16} color="var(--accent-cyan)" />
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            Folder Scope:
+          </span>
+          <div
+            style={{
+              flex: 1,
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.78rem',
+              color: targetFolder !== 'all' ? 'var(--accent-cyan)' : 'var(--text-muted)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {targetFolder !== 'all' ? targetFolder : 'All Folders (Whole Inventory)'}
+          </div>
+
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={async () => {
+              const res = await window.api.selectFolder()
+              if (res) setTargetFolder(res)
+            }}
+            title="Select a specific folder to classify"
+          >
+            <FolderPlus size={13} />
+            <span>Select Folder...</span>
+          </button>
+
+          {targetFolder !== 'all' && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setTargetFolder('all')}
+              title="Reset to all files"
+            >
+              <span>Reset (All)</span>
+            </button>
+          )}
         </div>
 
         {/* Informed Consent & Options Row */}
@@ -503,6 +561,21 @@ export const AIAnalysisView: React.FC = () => {
                         }}
                       >
                         {rec.filePath}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.68rem',
+                          color: 'var(--accent-cyan)',
+                          fontFamily: 'var(--font-mono)',
+                          marginTop: '3px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          opacity: 0.9
+                        }}
+                      >
+                        <Folder size={11} />
+                        <span>{rec.filePath.replace(/[\\/][^\\/]+$/, '').split(/[\\/]/).pop() || 'root'}</span>
                       </div>
                     </td>
                     <td>

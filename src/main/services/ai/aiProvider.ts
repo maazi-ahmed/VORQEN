@@ -1,3 +1,4 @@
+import path from 'path'
 import { SemanticCategory } from '../../../shared/types'
 
 export interface ClassificationRequest {
@@ -544,5 +545,212 @@ export class MockAIProvider implements AIProvider {
       promptVersion: PROMPT_VERSION,
       tokensUsed: { input: 150, output: 50 }
     }
+  }
+}
+
+/**
+ * Deterministic fallback classifier when file content cannot be read or extracted.
+ * Classifies based on file name, extension, and parent folder path.
+ */
+export function classifyByMetadataAndPath(
+  fileName: string,
+  filePath: string,
+  _fileSizeBytes: number
+): {
+  primaryCategory: SemanticCategory
+  secondaryCategories: SemanticCategory[]
+  description: string
+  confidence: number
+  confidenceLabel: 'High' | 'Medium' | 'Low' | 'Estimated' | 'Unknown'
+  evidence: string[]
+} {
+  const name = fileName.toLowerCase()
+  const ext = path.extname(fileName).toLowerCase()
+  const dir = path.dirname(filePath).toLowerCase().replace(/\\/g, '/')
+  const folderName = path.basename(path.dirname(filePath))
+
+  // 1. Invoices & Receipts
+  if (
+    /invoice|receipt|facture|bill|payment|فاتورة|وصل/i.test(name) ||
+    /invoice|receipt|bills|accounting|مالية/i.test(dir)
+  ) {
+    return {
+      primaryCategory: 'Invoices and Receipts',
+      secondaryCategories: [],
+      description: `Billing document inferred from name/folder: "${fileName}"`,
+      confidence: 0.85,
+      confidenceLabel: 'Estimated',
+      evidence: [`Filename or directory "${folderName}" contains billing keywords`]
+    }
+  }
+
+  // 2. University Notes & Educational Materials
+  if (
+    /lecture|syllabus|homework|assignment|course|exam|quiz|cours|جامعة|محاضرة|درس|امتحان|ملخص/i.test(name) ||
+    /university|college|classes|courses|academic|study|lectures/i.test(dir)
+  ) {
+    return {
+      primaryCategory: 'University Notes',
+      secondaryCategories: ['Educational Materials'],
+      description: `Academic study material inferred from name/folder: "${fileName}"`,
+      confidence: 0.85,
+      confidenceLabel: 'Estimated',
+      evidence: [`Directory "${folderName}" or filename indicates university/course notes`]
+    }
+  }
+
+  // 3. Research Papers
+  if (/paper|thesis|dissertation|research|arxiv|ieee|springer/i.test(name) || /research|papers/i.test(dir)) {
+    return {
+      primaryCategory: 'Research Papers',
+      secondaryCategories: ['Educational Materials'],
+      description: `Academic research document inferred from name/folder: "${fileName}"`,
+      confidence: 0.8,
+      confidenceLabel: 'Estimated',
+      evidence: [`Research keywords identified in path ("${folderName}")`]
+    }
+  }
+
+  // 4. Source Code
+  const codeExtensions = new Set([
+    '.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.c', '.cpp', '.h', '.hpp',
+    '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt', '.html', '.css', '.scss',
+    '.sql', '.sh', '.bat', '.ps1', '.vue', '.svelte', '.lua', '.dart', '.asm'
+  ])
+  if (codeExtensions.has(ext) || /src|source|scripts|components|utils|lib|backend|frontend/i.test(folderName)) {
+    return {
+      primaryCategory: 'Source Code',
+      secondaryCategories: ['Software Project Assets'],
+      description: `Source code file (${ext || 'script'}) in project tree`,
+      confidence: 0.9,
+      confidenceLabel: 'Estimated',
+      evidence: [`Extension "${ext}" or folder "${folderName}" identifies source code`]
+    }
+  }
+
+  // 5. Configuration Files
+  const configExtensions = new Set(['.json', '.yaml', '.yml', '.toml', '.ini', '.conf', '.config', '.env'])
+  if (configExtensions.has(ext) || name.startsWith('.') || /config|settings|\.vscode|\.idea/i.test(dir)) {
+    return {
+      primaryCategory: 'Configuration Files',
+      secondaryCategories: [],
+      description: `Configuration file (${ext || fileName})`,
+      confidence: 0.9,
+      confidenceLabel: 'Estimated',
+      evidence: [`Configuration syntax pattern in "${fileName}"`]
+    }
+  }
+
+  // 6. Datasets
+  const datasetExtensions = new Set(['.csv', '.tsv', '.parquet', '.arrow', '.h5', '.db', '.sqlite', '.sqlite3'])
+  if (datasetExtensions.has(ext) || /data|dataset|datasets/i.test(folderName)) {
+    return {
+      primaryCategory: 'Datasets',
+      secondaryCategories: [],
+      description: `Data storage / tabular dataset (${ext})`,
+      confidence: 0.85,
+      confidenceLabel: 'Estimated',
+      evidence: [`Dataset format "${ext}" located in folder "${folderName}"`]
+    }
+  }
+
+  // 7. AI Models & Artifacts
+  const modelExtensions = new Set(['.onnx', '.pt', '.pth', '.bin', '.safetensors', '.gguf', '.tflite', '.weights', '.ckpt'])
+  if (modelExtensions.has(ext) || /weights|checkpoints|models|embeddings/i.test(folderName)) {
+    return {
+      primaryCategory: 'AI Models and Model Artifacts',
+      secondaryCategories: [],
+      description: `Machine learning weights / model artifact (${ext})`,
+      confidence: 0.9,
+      confidenceLabel: 'Estimated',
+      evidence: [`AI model weights format "${ext}"`]
+    }
+  }
+
+  // 8. Images & Media
+  const mediaExtensions = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico',
+    '.mp4', '.mp3', '.mkv', '.wav', '.mov', '.flac', '.avi', '.m4a'
+  ])
+  if (mediaExtensions.has(ext) || /images|photos|media|videos|audio|assets/i.test(folderName)) {
+    return {
+      primaryCategory: 'Images and Media',
+      secondaryCategories: [],
+      description: `Media asset (${ext}) in "${folderName}"`,
+      confidence: 0.95,
+      confidenceLabel: 'Estimated',
+      evidence: [`Media format "${ext}" in directory "${folderName}"`]
+    }
+  }
+
+  // 9. Archives
+  const archiveExtensions = new Set(['.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz', '.iso', '.tgz'])
+  if (archiveExtensions.has(ext)) {
+    return {
+      primaryCategory: 'Archives',
+      secondaryCategories: [],
+      description: `Compressed archive (${ext})`,
+      confidence: 0.95,
+      confidenceLabel: 'Estimated',
+      evidence: [`Compressed file archive format "${ext}"`]
+    }
+  }
+
+  // 10. Logs & Diagnostic
+  if (ext === '.log' || ext === '.dmp' || /logs|diagnostics|telemetry/i.test(folderName)) {
+    return {
+      primaryCategory: 'Logs and Diagnostic Files',
+      secondaryCategories: [],
+      description: `Diagnostic log file (${ext || 'log'})`,
+      confidence: 0.9,
+      confidenceLabel: 'Estimated',
+      evidence: [`Log extension or folder "${folderName}"`]
+    }
+  }
+
+  // 11. Temporary / Cache
+  if (ext === '.tmp' || ext === '.temp' || ext === '.bak' || ext === '.swp' || /cache|temp|tmp/i.test(folderName)) {
+    return {
+      primaryCategory: 'Temporary or Cache Candidates',
+      secondaryCategories: [],
+      description: `Temporary or cache candidate (${ext || 'temp'})`,
+      confidence: 0.85,
+      confidenceLabel: 'Estimated',
+      evidence: [`Cache or temporary directory indicator ("${folderName}")`]
+    }
+  }
+
+  // 12. Software Project Assets
+  if (/node_modules|vendor|dist|build|out|target/i.test(dir)) {
+    return {
+      primaryCategory: 'Software Project Assets',
+      secondaryCategories: [],
+      description: `Project build artifact or dependency in "${folderName}"`,
+      confidence: 0.85,
+      confidenceLabel: 'Estimated',
+      evidence: [`Located in project build/dependency folder: "${folderName}"`]
+    }
+  }
+
+  // 13. Documents
+  if (['.pdf', '.docx', '.doc', '.xlsx', '.pptx', '.odt'].includes(ext)) {
+    return {
+      primaryCategory: 'Personal Documents',
+      secondaryCategories: ['Administrative Documents'],
+      description: `Document file (${ext}) in "${folderName}"`,
+      confidence: 0.7,
+      confidenceLabel: 'Estimated',
+      evidence: [`Document format "${ext}" classified by filename and folder location`]
+    }
+  }
+
+  // 14. Default fallback
+  return {
+    primaryCategory: 'Other',
+    secondaryCategories: [],
+    description: `File "${fileName}" in folder "${folderName}"`,
+    confidence: 0.5,
+    confidenceLabel: 'Estimated',
+    evidence: [`Classified from filename "${fileName}" and folder context`]
   }
 }

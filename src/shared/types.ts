@@ -393,6 +393,7 @@ export interface FileAnalysisRecord {
 
 export interface AnalysisJobOptions {
   scanId?: string
+  targetFolder?: string
   selectedFileIds?: string[]
   generateSummaries: boolean
   forceReanalyze: boolean

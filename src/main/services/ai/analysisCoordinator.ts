@@ -12,10 +12,58 @@ import {
   FileInventoryRecord
 } from '../../../shared/types'
 import { scanCoordinator } from '../scanner/scanCoordinator'
-import { AIProvider, createAIProvider } from './aiProvider'
+import { AIProvider, createAIProvider, classifyByMetadataAndPath } from './aiProvider'
 
 import { analysisStorage, AnalysisStorageService } from './analysisStorage'
 import { extractFileContent, isFormatSupported } from './contentExtractor'
+
+/**
+ * Direct file traversal for target folders when not yet in Feature 1 scan inventory
+ */
+async function listFilesInDirectory(dirPath: string, maxFiles = 3000): Promise<FileInventoryRecord[]> {
+  const records: FileInventoryRecord[] = []
+  async function walk(curr: string) {
+    if (records.length >= maxFiles) return
+    try {
+      const entries = await fs.promises.readdir(curr, { withFileTypes: true })
+      for (const ent of entries) {
+        if (records.length >= maxFiles) break
+        const full = path.join(curr, ent.name)
+        if (ent.isDirectory()) {
+          if (!ent.name.startsWith('.') && ent.name !== 'node_modules') {
+            await walk(full)
+          }
+        } else if (ent.isFile()) {
+          try {
+            const stat = await fs.promises.stat(full)
+            records.push({
+              id: Buffer.from(full).toString('base64').slice(0, 24),
+              path: full,
+              parentPath: curr,
+              name: ent.name,
+              extension: path.extname(ent.name).toLowerCase(),
+              sizeBytes: stat.size,
+              createdAt: stat.birthtime.toISOString(),
+              modifiedAt: stat.mtime.toISOString(),
+              accessedAt: stat.atime.toISOString(),
+              classification: 'other',
+              status: 'ok',
+              isSymlink: false,
+              isHidden: ent.name.startsWith('.')
+            })
+          } catch {
+            // ignore inaccessible file
+          }
+        }
+      }
+    } catch {
+      // ignore directory access error
+    }
+  }
+
+  await walk(dirPath)
+  return records
+}
 
 export class AnalysisCoordinator {
   private currentJobId: string | null = null
@@ -173,34 +221,54 @@ export class AnalysisCoordinator {
     this.userConsentGranted = true
 
     // Retrieve file inventory from Feature 1
-    const { items: allFiles } = scanCoordinator.getFiles(options.scanId, 0, 5000)
+    let { items: allFiles } = scanCoordinator.getFiles(options.scanId, 0, 10000)
+
+    // Direct folder classification fallback if targetFolder selected but not in scan inventory
+    if (options.targetFolder && options.targetFolder !== 'all') {
+      const normTarget = path.normalize(options.targetFolder).toLowerCase()
+      const matching = allFiles.filter((f) => path.normalize(f.path).toLowerCase().startsWith(normTarget))
+      if (matching.length === 0 && fs.existsSync(options.targetFolder)) {
+        allFiles = await listFilesInDirectory(options.targetFolder)
+      }
+    }
+
     if (allFiles.length === 0) {
       return {
         started: false,
         jobId: '',
-        error: 'No files found in scan inventory. Please perform a System Discovery scan first.'
+        error: options.targetFolder
+          ? `No files found in folder "${options.targetFolder}".`
+          : 'No files found in scan inventory. Please perform a System Discovery scan or select a folder.'
       }
     }
 
     // Filter eligible files
-    let candidates: FileInventoryRecord[] = []
-    if (options.selectedFileIds && options.selectedFileIds.length > 0) {
-      const idSet = new Set(options.selectedFileIds)
-      candidates = allFiles.filter((f) => idSet.has(f.id))
-    } else {
-      candidates = allFiles
+    let candidates: FileInventoryRecord[] = allFiles
+
+    // Folder Filter: If user selected a specific target folder
+    if (options.targetFolder && options.targetFolder !== 'all') {
+      const normTarget = path.normalize(options.targetFolder).toLowerCase()
+      candidates = candidates.filter((f) => {
+        const normPath = path.normalize(f.path).toLowerCase()
+        return normPath.startsWith(normTarget)
+      })
     }
 
-    // Filter by supported format and valid status
-    const eligibleFiles = candidates.filter(
-      (f) => f.status === 'ok' && isFormatSupported(f.path)
-    )
+    if (options.selectedFileIds && options.selectedFileIds.length > 0) {
+      const idSet = new Set(options.selectedFileIds)
+      candidates = candidates.filter((f) => idSet.has(f.id))
+    }
+
+    // Candidate files with status ok
+    const eligibleFiles = candidates.filter((f) => f.status === 'ok')
 
     if (eligibleFiles.length === 0) {
       return {
         started: false,
         jobId: '',
-        error: 'No eligible text or document files found matching supported formats.'
+        error: options.targetFolder && options.targetFolder !== 'all'
+          ? `No accessible files found in folder: ${options.targetFolder}`
+          : 'No accessible files found in scan inventory.'
       }
     }
 
@@ -312,7 +380,7 @@ export class AnalysisCoordinator {
             failedCount,
             skippedCount,
             currentFileName: file.name,
-            currentStage: `Extracting content: ${file.name}`,
+            currentStage: `Inspecting: ${file.name}`,
             elapsedMs: Date.now() - startTime
           })
 
@@ -330,118 +398,128 @@ export class AnalysisCoordinator {
           }
 
           // Step 1: Content Extraction
-          const extraction = await extractFileContent(file.path)
+          const extraction = isFormatSupported(file.path)
+            ? await extractFileContent(file.path)
+            : { status: 'unsupported_format' as const, text: '', characterCount: 0, isTruncated: false }
 
-          if (extraction.status !== 'success') {
-            processedCount++
-            failedCount++
-            errors.push({ filePath: file.path, error: extraction.errorMessage || extraction.status })
+          let record: FileAnalysisRecord
 
-            const failedRecord: FileAnalysisRecord = {
-              fileId: file.id,
-              filePath: file.path,
-              fileName: file.name,
-              fileSizeBytes: file.sizeBytes,
-              fileModifiedAt: file.modifiedAt,
-              primaryCategory: 'Unknown',
-              description: `Extraction failed: ${extraction.errorMessage || extraction.status}`,
-              confidence: 0,
-              confidenceLabel: 'Unknown',
-              evidence: [],
-              extractionStatus: extraction.status,
-              analysisStatus: 'failed',
-              modelUsed: 'none',
-              promptVersion: 'none',
-              analyzedAt: new Date().toISOString(),
-              errorMessage: extraction.errorMessage || extraction.status
-            }
-
-            await this.storage.saveRecord(failedRecord)
-            return
-          }
-
-          // Step 2: AI Classification & Summarization
-          this.jobState = 'analyzing'
-          this.emitProgress(window, {
-            jobId,
-            state: 'analyzing',
-            totalEligible: files.length,
-            processedCount,
-            successCount,
-            failedCount,
-            skippedCount,
-            currentFileName: file.name,
-            currentStage: `AI Semantic Classification: ${file.name}`,
-            elapsedMs: Date.now() - startTime
-          })
-
-          try {
-            const aiResult = await this.provider.classifyAndSummarize({
-              fileName: file.name,
-              extension: file.extension,
-              fileSizeBytes: file.sizeBytes,
-              extractedText: extraction.text,
-              generateSummary: options.generateSummaries,
-              signal: this.abortController?.signal
+          if (extraction.status === 'success' && extraction.text.trim().length > 0) {
+            // Content is readable: Execute AI Classification!
+            this.jobState = 'analyzing'
+            this.emitProgress(window, {
+              jobId,
+              state: 'analyzing',
+              totalEligible: files.length,
+              processedCount,
+              successCount,
+              failedCount,
+              skippedCount,
+              currentFileName: file.name,
+              currentStage: `AI Semantic Classification: ${file.name}`,
+              elapsedMs: Date.now() - startTime
             })
 
-            const record: FileAnalysisRecord = {
+            try {
+              const aiResult = await this.provider.classifyAndSummarize({
+                fileName: file.name,
+                extension: file.extension,
+                fileSizeBytes: file.sizeBytes,
+                extractedText: extraction.text,
+                generateSummary: options.generateSummaries,
+                signal: this.abortController?.signal
+              })
+
+              record = {
+                fileId: file.id,
+                filePath: file.path,
+                fileName: file.name,
+                fileSizeBytes: file.sizeBytes,
+                fileModifiedAt: file.modifiedAt,
+                primaryCategory: aiResult.primaryCategory,
+                secondaryCategories: aiResult.secondaryCategories,
+                summary: aiResult.summary,
+                description: aiResult.description,
+                detectedLanguage: aiResult.detectedLanguage,
+                confidence: aiResult.confidence,
+                confidenceLabel: aiResult.confidenceLabel,
+                evidence: aiResult.evidence,
+                extractedSnippet: extraction.text.slice(0, 300),
+                extractionStatus: 'success',
+                analysisStatus: 'success',
+                modelUsed: aiResult.modelUsed,
+                promptVersion: aiResult.promptVersion,
+                analyzedAt: new Date().toISOString(),
+                tokensUsed: aiResult.tokensUsed
+              }
+
+              processedCount++
+              successCount++
+              categoryDistribution[aiResult.primaryCategory] =
+                (categoryDistribution[aiResult.primaryCategory] || 0) + 1
+            } catch (aiErr: unknown) {
+              // Individual AI request error: Fallback to filename & folder classification
+              const fallback = classifyByMetadataAndPath(file.name, file.path, file.sizeBytes)
+              record = {
+                fileId: file.id,
+                filePath: file.path,
+                fileName: file.name,
+                fileSizeBytes: file.sizeBytes,
+                fileModifiedAt: file.modifiedAt,
+                primaryCategory: fallback.primaryCategory,
+                secondaryCategories: fallback.secondaryCategories,
+                description: fallback.description,
+                confidence: fallback.confidence,
+                confidenceLabel: 'Estimated',
+                evidence: [
+                  `Classified from file name and directory context (AI fallback: ${aiErr instanceof Error ? aiErr.message : 'transient error'})`,
+                  ...fallback.evidence
+                ],
+                extractionStatus: 'success',
+                analysisStatus: 'success',
+                modelUsed: 'name-folder-fallback',
+                promptVersion: 'v1.0-fallback',
+                analyzedAt: new Date().toISOString()
+              }
+
+              processedCount++
+              successCount++
+              categoryDistribution[fallback.primaryCategory] =
+                (categoryDistribution[fallback.primaryCategory] || 0) + 1
+            }
+          } else {
+            // Cannot extract text content (binary, empty, unsupported, or too large):
+            // Fallback starting from the name and folder path!
+            const fallback = classifyByMetadataAndPath(file.name, file.path, file.sizeBytes)
+            record = {
               fileId: file.id,
               filePath: file.path,
               fileName: file.name,
               fileSizeBytes: file.sizeBytes,
               fileModifiedAt: file.modifiedAt,
-              primaryCategory: aiResult.primaryCategory,
-              secondaryCategories: aiResult.secondaryCategories,
-              summary: aiResult.summary,
-              description: aiResult.description,
-              detectedLanguage: aiResult.detectedLanguage,
-              confidence: aiResult.confidence,
-              confidenceLabel: aiResult.confidenceLabel,
-              evidence: aiResult.evidence,
-              extractedSnippet: extraction.text.slice(0, 300),
-              extractionStatus: 'success',
+              primaryCategory: fallback.primaryCategory,
+              secondaryCategories: fallback.secondaryCategories,
+              description: fallback.description,
+              confidence: fallback.confidence,
+              confidenceLabel: 'Estimated',
+              evidence: [
+                `Classified from file name and folder path (${extraction.status})`,
+                ...fallback.evidence
+              ],
+              extractionStatus: extraction.status,
               analysisStatus: 'success',
-              modelUsed: aiResult.modelUsed,
-              promptVersion: aiResult.promptVersion,
-              analyzedAt: new Date().toISOString(),
-              tokensUsed: aiResult.tokensUsed
+              modelUsed: 'name-folder-classifier',
+              promptVersion: 'v1.0-metadata',
+              analyzedAt: new Date().toISOString()
             }
-
-            await this.storage.saveRecord(record)
 
             processedCount++
             successCount++
-            categoryDistribution[aiResult.primaryCategory] =
-              (categoryDistribution[aiResult.primaryCategory] || 0) + 1
-          } catch (err: unknown) {
-            processedCount++
-            failedCount++
-            const errMsg = err instanceof Error ? err.message : 'AI classification failed'
-            errors.push({ filePath: file.path, error: errMsg })
-
-            const errorRecord: FileAnalysisRecord = {
-              fileId: file.id,
-              filePath: file.path,
-              fileName: file.name,
-              fileSizeBytes: file.sizeBytes,
-              fileModifiedAt: file.modifiedAt,
-              primaryCategory: 'Unknown',
-              description: `AI inference failed: ${errMsg}`,
-              confidence: 0,
-              confidenceLabel: 'Unknown',
-              evidence: [],
-              extractedSnippet: extraction.text.slice(0, 300),
-              extractionStatus: 'success',
-              analysisStatus: 'failed',
-              modelUsed: 'error',
-              promptVersion: 'error',
-              analyzedAt: new Date().toISOString(),
-              errorMessage: errMsg
-            }
-
-            await this.storage.saveRecord(errorRecord)
+            categoryDistribution[fallback.primaryCategory] =
+              (categoryDistribution[fallback.primaryCategory] || 0) + 1
           }
+
+          await this.storage.saveRecord(record)
         })
       )
     }
