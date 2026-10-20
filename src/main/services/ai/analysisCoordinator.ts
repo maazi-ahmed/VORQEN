@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import {
@@ -30,31 +32,60 @@ export class AnalysisCoordinator {
   constructor(customStorage?: AnalysisStorageService) {
     this.storage = customStorage || analysisStorage
 
-    // Auto-load API key from environment if present
-    const envKey =
-      process.env.OPENROUTER_API_KEY ||
-      process.env.AI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_AI_API_KEY ||
-      ''
-
-    if (envKey.startsWith('sk-or-')) {
+    const key = this.getEffectiveApiKey()
+    if (key.startsWith('sk-or-')) {
       this.customModel = 'google/gemma-4-31b-it:free'
-    } else if (envKey) {
+    } else if (key) {
       this.customModel = 'gemma-4-31b-it'
     }
 
-    this.provider = createAIProvider(envKey, this.customModel)
+    this.provider = createAIProvider(key, this.customModel)
   }
 
-  public getSettings(): AISettings {
-    const envKey =
+  public getEffectiveApiKey(): string {
+    if (this.customApiKey) return this.customApiKey
+
+    let envKey =
       process.env.OPENROUTER_API_KEY ||
       process.env.AI_API_KEY ||
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_AI_API_KEY ||
       ''
-    const effectiveKey = this.customApiKey || envKey
+
+    if (!envKey) {
+      try {
+        const envPath = path.resolve(process.cwd(), '.env')
+        if (fs.existsSync(envPath)) {
+          const raw = fs.readFileSync(envPath, 'utf8')
+          for (const line of raw.split(/\r?\n/)) {
+            const trimmed = line.trim()
+            if (!trimmed || trimmed.startsWith('#')) continue
+            const eq = trimmed.indexOf('=')
+            if (eq > 0) {
+              const k = trimmed.slice(0, eq).trim()
+              const v = trimmed.slice(eq + 1).trim()
+              if (
+                k === 'OPENROUTER_API_KEY' ||
+                k === 'AI_API_KEY' ||
+                k === 'GEMINI_API_KEY' ||
+                k === 'GOOGLE_AI_API_KEY'
+              ) {
+                process.env[k] = v
+                if (!envKey) envKey = v
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return envKey
+  }
+
+  public getSettings(): AISettings {
+    const effectiveKey = this.getEffectiveApiKey()
     const hasKey = Boolean(effectiveKey)
     const isOr = effectiveKey.startsWith('sk-or-')
 
@@ -126,6 +157,18 @@ export class AnalysisCoordinator {
         error: 'User consent is required before sending document contents for AI analysis.'
       }
     }
+
+    const apiKey = this.getEffectiveApiKey()
+    if (!apiKey) {
+      return {
+        started: false,
+        jobId: '',
+        error: 'No AI API Key is configured. Please click "AI Settings" to enter your key or configure OPENROUTER_API_KEY in .env.'
+      }
+    }
+
+    // Refresh provider
+    this.provider = createAIProvider(apiKey, this.customModel)
 
     this.userConsentGranted = true
 

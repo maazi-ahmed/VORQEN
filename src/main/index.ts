@@ -1,6 +1,29 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
+import fs from 'fs'
 import { registerIpcHandlers } from './ipc/handlers'
+
+// Load .env file automatically in development or production
+try {
+  const envPath = join(process.cwd(), '.env')
+  if (fs.existsSync(envPath)) {
+    const raw = fs.readFileSync(envPath, 'utf8')
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eq = trimmed.indexOf('=')
+      if (eq > 0) {
+        const k = trimmed.slice(0, eq).trim()
+        const v = trimmed.slice(eq + 1).trim()
+        if (!process.env[k]) {
+          process.env[k] = v
+        }
+      }
+    }
+  }
+} catch {
+  // Ignore env read errors
+}
 
 let mainWindow: BrowserWindow | null = null
 

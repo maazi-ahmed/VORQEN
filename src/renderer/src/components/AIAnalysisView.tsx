@@ -132,8 +132,13 @@ export const AIAnalysisView: React.FC = () => {
 
   // Action: Start Analysis
   const handleStartAnalysis = async () => {
+    if (!settings.apiKeyConfigured) {
+      setShowSettingsModal(true)
+      return
+    }
+
     if (!userConsent) {
-      alert('Please grant informed consent before sending document text to Google AI.')
+      alert('Please grant informed consent before sending document text for AI analysis.')
       return
     }
 
@@ -566,7 +571,7 @@ export const AIAnalysisView: React.FC = () => {
             <div className="modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#fff' }}>
                 <Key size={18} color="var(--accent-cyan)" />
-                <span>Google AI / Gemini Settings</span>
+                <span>AI / LLM Settings (OpenRouter / Google AI)</span>
               </div>
               <button className="btn-icon" onClick={() => setShowSettingsModal(false)}>
                 &times;
@@ -576,17 +581,17 @@ export const AIAnalysisView: React.FC = () => {
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                  Google AI API Key
+                  AI API Key (OpenRouter or Google AI)
                 </label>
                 <input
                   type="password"
-                  placeholder={settings.apiKeyConfigured ? '•••••••••••••••••••••••• (configured in .env)' : 'Enter Google AI API Key'}
+                  placeholder={settings.apiKeyConfigured ? '•••••••••••••••••••••••• (configured & active)' : 'Enter OpenRouter (sk-or-...) or Google AI Key'}
                   value={inputApiKey}
                   onChange={(e) => setInputApiKey(e.target.value)}
                   className="search-input"
                 />
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
-                  Stored securely in memory / local configuration. Never exposed to renderer.
+                  Supports OpenRouter (sk-or-...) for free Gemma 4 / Mixtral or Google AI keys. Never exposed to renderer.
                 </span>
               </div>
 
