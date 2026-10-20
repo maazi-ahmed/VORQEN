@@ -3,13 +3,16 @@ import { FolderPicker } from './components/FolderPicker'
 import { FolderItemsView } from './components/FolderItemsView'
 import { ScriptCatalog } from './components/ScriptCatalog'
 import { ConsoleOutput } from './components/ConsoleOutput'
+import { SystemScannerView } from './components/SystemScannerView'
 import { FolderStats, ScriptExitPayload, ScriptLogPayload, ScriptRunRequest } from '../../shared/types'
-import { FolderGit2, Cpu } from 'lucide-react'
+import { FolderGit2, Cpu, FolderKanban, ShieldCheck } from 'lucide-react'
 
 export const App: React.FC = () => {
+  const [currentView, setCurrentView] = useState<'workspace' | 'scanner'>('scanner')
   const [activeFolder, setActiveFolder] = useState<string | null>(null)
   const [folderStats, setFolderStats] = useState<FolderStats | null>(null)
   const [loadingFolder, setLoadingFolder] = useState<boolean>(false)
+
 
   const [isRunning, setIsRunning] = useState<boolean>(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
@@ -119,6 +122,24 @@ export const App: React.FC = () => {
           </div>
         </div>
 
+        {/* View Switcher Tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className={`btn btn-sm ${currentView === 'scanner' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setCurrentView('scanner')}
+          >
+            <ShieldCheck size={14} />
+            <span>System Discovery & Intelligence</span>
+          </button>
+          <button
+            className={`btn btn-sm ${currentView === 'workspace' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setCurrentView('workspace')}
+          >
+            <FolderKanban size={14} />
+            <span>Folder Workspace</span>
+          </button>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div
             style={{
@@ -131,56 +152,64 @@ export const App: React.FC = () => {
               border: '1px solid var(--border-color)'
             }}
           >
-            Electron + React + TS
+            Electron 33 + React 18 + TS
           </div>
         </div>
       </header>
 
-      {/* Main Grid: Sidebar + Workspace */}
-      <main className="main-grid">
-        {/* Left Sidebar */}
-        <aside className="sidebar-panel">
-          <FolderPicker
-            stats={folderStats}
-            loading={loadingFolder}
-            onSelectFolder={handleSelectFolder}
-            onOpenExplorer={handleOpenExplorer}
-          />
+      {/* Main Content Area */}
+      {currentView === 'scanner' ? (
+        <main style={{ padding: '18px 24px', overflowY: 'auto', height: 'calc(100vh - 61px)' }}>
+          <SystemScannerView />
+        </main>
+      ) : (
+        /* Original Workspace: Sidebar + Script Catalog + Console */
+        <main className="main-grid">
+          {/* Left Sidebar */}
+          <aside className="sidebar-panel">
+            <FolderPicker
+              stats={folderStats}
+              loading={loadingFolder}
+              onSelectFolder={handleSelectFolder}
+              onOpenExplorer={handleOpenExplorer}
+            />
 
-          {folderStats && (
-            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div className="card-header">
-                <div className="card-title">
-                  <FolderGit2 size={16} color="var(--accent-blue)" />
-                  <span>Files in Directory</span>
+            {folderStats && (
+              <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div className="card-header">
+                  <div className="card-title">
+                    <FolderGit2 size={16} color="var(--accent-blue)" />
+                    <span>Files in Directory</span>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {folderStats.items.length} items
+                  </span>
                 </div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {folderStats.items.length} items
-                </span>
+                <FolderItemsView items={folderStats.items} />
               </div>
-              <FolderItemsView items={folderStats.items} />
-            </div>
-          )}
-        </aside>
+            )}
+          </aside>
 
-        {/* Workspace Content */}
-        <section className="workspace-content">
-          <ScriptCatalog
-            activeFolder={activeFolder}
-            isRunning={isRunning}
-            onRunScript={handleRunScript}
-            onStopScript={handleStopScript}
-          />
+          {/* Workspace Content */}
+          <section className="workspace-content">
+            <ScriptCatalog
+              activeFolder={activeFolder}
+              isRunning={isRunning}
+              onRunScript={handleRunScript}
+              onStopScript={handleStopScript}
+            />
 
-          <ConsoleOutput
-            logs={logs}
-            isRunning={isRunning}
-            lastExit={lastExit}
-            onClearLogs={() => setLogs([])}
-          />
-        </section>
-      </main>
+            <ConsoleOutput
+              logs={logs}
+              isRunning={isRunning}
+              lastExit={lastExit}
+              onClearLogs={() => setLogs([])}
+            />
+          </section>
+        </main>
+      )}
     </div>
+
   )
 }
 export default App

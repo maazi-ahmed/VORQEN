@@ -31,6 +31,46 @@ const api: ElectronAPI = {
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.ON_SCRIPT_EXIT, handler)
     }
+  },
+
+  // System Discovery & Scanner
+  scanGetRoots: (scopePreset) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_GET_ROOTS, scopePreset)
+  },
+  scanGetVolumes: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_GET_VOLUMES)
+  },
+  scanStart: (options) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_START, options)
+  },
+  scanCancel: (scanId) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_CANCEL, scanId)
+  },
+  scanGetStatus: (scanId) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_GET_STATUS, scanId)
+  },
+  scanGetApplications: (scanId) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_GET_APPLICATIONS, scanId)
+  },
+  scanGetAppReport: (appId, scanId) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_GET_APP_REPORT, appId, scanId)
+  },
+  scanGetFiles: (scanId, offset, limit, query) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SCAN_GET_FILES, scanId, offset, limit, query)
+  },
+  onScanProgress: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on(IPC_CHANNELS.ON_SCAN_PROGRESS, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.ON_SCAN_PROGRESS, handler)
+    }
+  },
+  onScanCompleted: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on(IPC_CHANNELS.ON_SCAN_COMPLETED, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.ON_SCAN_COMPLETED, handler)
+    }
   }
 }
 
