@@ -77,7 +77,27 @@ export interface ElectronAPI {
   ) => Promise<{ items: FileInventoryRecord[]; total: number }>
   onScanProgress: (callback: (payload: ScanProgressEvent) => void) => () => void
   onScanCompleted: (callback: (summary: ScanSummary) => void) => () => void
+
+  // Feature 2: AI File Understanding & Semantic Classification
+  aiStartAnalysis: (
+    options: AnalysisJobOptions
+  ) => Promise<{ started: boolean; jobId: string; error?: string }>
+  aiCancelAnalysis: (jobId: string) => Promise<{ cancelled: boolean }>
+  aiGetResults: (
+    offset?: number,
+    limit?: number,
+    category?: string,
+    query?: string
+  ) => Promise<{ items: FileAnalysisRecord[]; total: number }>
+  aiGetSettings: () => Promise<AISettings>
+  aiUpdateSettings: (
+    settings: Partial<AISettings> & { apiKey?: string }
+  ) => Promise<{ success: boolean; error?: string }>
+  aiTestConnection: () => Promise<{ ok: boolean; message: string; models?: string[] }>
+  onAIProgress: (callback: (payload: AnalysisJobProgress) => void) => () => void
+  onAICompleted: (callback: (summary: AnalysisJobSummary) => void) => () => void
 }
+
 
 // ==========================================
 // Full System Discovery & App Intelligence Types
@@ -313,4 +333,114 @@ export interface ApplicationInspectionReport {
     scanCoverageNotes: string
   }
 }
+
+// ==========================================
+// Feature 2: AI File Understanding & Semantic Classification
+// ==========================================
+
+export type SemanticCategory =
+  | 'University Notes'
+  | 'Research Papers'
+  | 'Educational Materials'
+  | 'Invoices and Receipts'
+  | 'Personal Documents'
+  | 'Administrative Documents'
+  | 'Source Code'
+  | 'Software Project Assets'
+  | 'Configuration Files'
+  | 'Datasets'
+  | 'AI Models and Model Artifacts'
+  | 'Images and Media'
+  | 'Archives'
+  | 'Logs and Diagnostic Files'
+  | 'Temporary or Cache Candidates'
+  | 'Other'
+  | 'Unknown'
+
+export type ExtractionStatus =
+  | 'success'
+  | 'empty'
+  | 'unsupported_format'
+  | 'too_large'
+  | 'corrupted'
+  | 'error'
+
+export type AnalysisStatus = 'pending' | 'success' | 'failed' | 'skipped'
+
+export interface FileAnalysisRecord {
+  fileId: string
+  filePath: string
+  fileName: string
+  fileSizeBytes: number
+  fileModifiedAt: string
+  primaryCategory: SemanticCategory
+  secondaryCategories?: SemanticCategory[]
+  summary?: string
+  description: string
+  detectedLanguage?: string
+  confidence: number
+  confidenceLabel: 'High' | 'Medium' | 'Low' | 'Estimated' | 'Unknown'
+  evidence: string[]
+  extractedSnippet?: string
+  extractionStatus: ExtractionStatus
+  analysisStatus: AnalysisStatus
+  modelUsed: string
+  promptVersion: string
+  analyzedAt: string
+  errorMessage?: string
+  tokensUsed?: { input: number; output: number }
+}
+
+export interface AnalysisJobOptions {
+  scanId?: string
+  selectedFileIds?: string[]
+  generateSummaries: boolean
+  forceReanalyze: boolean
+  maxConcurrency?: number
+  userConsentGiven: boolean
+}
+
+export type AnalysisJobState =
+  | 'idle'
+  | 'preparing'
+  | 'extracting'
+  | 'analyzing'
+  | 'completed'
+  | 'cancelled'
+  | 'failed'
+
+export interface AnalysisJobProgress {
+  jobId: string
+  state: AnalysisJobState
+  totalEligible: number
+  processedCount: number
+  successCount: number
+  failedCount: number
+  skippedCount: number
+  currentFileName: string
+  currentStage: string
+  elapsedMs: number
+}
+
+export interface AnalysisJobSummary {
+  jobId: string
+  state: 'completed' | 'cancelled' | 'failed'
+  startTime: number
+  endTime: number
+  durationMs: number
+  totalEligible: number
+  successCount: number
+  failedCount: number
+  skippedCount: number
+  categoryDistribution: Record<string, number>
+  errors: { filePath: string; error: string }[]
+}
+
+export interface AISettings {
+  provider: 'gemini' | 'mock'
+  apiKeyConfigured: boolean
+  model: string
+  consentGranted: boolean
+}
+
 

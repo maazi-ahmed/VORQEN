@@ -4,14 +4,16 @@ import { FolderItemsView } from './components/FolderItemsView'
 import { ScriptCatalog } from './components/ScriptCatalog'
 import { ConsoleOutput } from './components/ConsoleOutput'
 import { SystemScannerView } from './components/SystemScannerView'
+import { AIAnalysisView } from './components/AIAnalysisView'
 import { FolderStats, ScriptExitPayload, ScriptLogPayload, ScriptRunRequest } from '../../shared/types'
-import { FolderGit2, Cpu, FolderKanban, ShieldCheck } from 'lucide-react'
+import { FolderGit2, Cpu, FolderKanban, ShieldCheck, Brain } from 'lucide-react'
 
 export const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<'workspace' | 'scanner'>('scanner')
+  const [currentView, setCurrentView] = useState<'workspace' | 'scanner' | 'ai'>('scanner')
   const [activeFolder, setActiveFolder] = useState<string | null>(null)
   const [folderStats, setFolderStats] = useState<FolderStats | null>(null)
   const [loadingFolder, setLoadingFolder] = useState<boolean>(false)
+
 
 
   const [isRunning, setIsRunning] = useState<boolean>(false)
@@ -132,6 +134,13 @@ export const App: React.FC = () => {
             <span>System Discovery & Intelligence</span>
           </button>
           <button
+            className={`btn btn-sm ${currentView === 'ai' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setCurrentView('ai')}
+          >
+            <Brain size={14} />
+            <span>AI Understanding & Classification</span>
+          </button>
+          <button
             className={`btn btn-sm ${currentView === 'workspace' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setCurrentView('workspace')}
           >
@@ -162,7 +171,12 @@ export const App: React.FC = () => {
         <main style={{ padding: '18px 24px', overflowY: 'auto', height: 'calc(100vh - 61px)' }}>
           <SystemScannerView />
         </main>
+      ) : currentView === 'ai' ? (
+        <main style={{ padding: '18px 24px', overflowY: 'auto', height: 'calc(100vh - 61px)' }}>
+          <AIAnalysisView />
+        </main>
       ) : (
+
         /* Original Workspace: Sidebar + Script Catalog + Console */
         <main className="main-grid">
           {/* Left Sidebar */}

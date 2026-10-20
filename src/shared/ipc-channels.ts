@@ -17,6 +17,17 @@ export const IPC_CHANNELS = {
   SCAN_GET_APP_REPORT: 'scanner:get-app-report',
   SCAN_GET_FILES: 'scanner:get-files',
   ON_SCAN_PROGRESS: 'scanner:on-progress',
-  ON_SCAN_COMPLETED: 'scanner:on-completed'
+  ON_SCAN_COMPLETED: 'scanner:on-completed',
+
+  // Feature 2: AI File Understanding & Semantic Classification
+  AI_START_ANALYSIS: 'ai:start-analysis',
+  AI_CANCEL_ANALYSIS: 'ai:cancel-analysis',
+  AI_GET_RESULTS: 'ai:get-results',
+  AI_GET_SETTINGS: 'ai:get-settings',
+  AI_UPDATE_SETTINGS: 'ai:update-settings',
+  AI_TEST_CONNECTION: 'ai:test-connection',
+  ON_AI_PROGRESS: 'ai:on-progress',
+  ON_AI_COMPLETED: 'ai:on-completed'
 } as const
+
 

@@ -71,8 +71,43 @@ const api: ElectronAPI = {
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.ON_SCAN_COMPLETED, handler)
     }
+  },
+
+  // Feature 2: AI File Understanding & Semantic Classification
+  aiStartAnalysis: (options) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.AI_START_ANALYSIS, options)
+  },
+  aiCancelAnalysis: (jobId) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.AI_CANCEL_ANALYSIS, jobId)
+  },
+  aiGetResults: (offset, limit, category, query) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.AI_GET_RESULTS, offset, limit, category, query)
+  },
+  aiGetSettings: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.AI_GET_SETTINGS)
+  },
+  aiUpdateSettings: (settings) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.AI_UPDATE_SETTINGS, settings)
+  },
+  aiTestConnection: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.AI_TEST_CONNECTION)
+  },
+  onAIProgress: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on(IPC_CHANNELS.ON_AI_PROGRESS, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.ON_AI_PROGRESS, handler)
+    }
+  },
+  onAICompleted: (callback) => {
+    const handler = (_event: IpcRendererEvent, payload: any) => callback(payload)
+    ipcRenderer.on(IPC_CHANNELS.ON_AI_COMPLETED, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.ON_AI_COMPLETED, handler)
+    }
   }
 }
+
 
 try {
   contextBridge.exposeInMainWorld('api', api)

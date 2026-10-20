@@ -5,6 +5,8 @@ import { inspectFolder } from '../services/fileSystem'
 import { scriptRunner } from '../services/scriptRunner'
 import { discoverScanRoots, discoverVolumes } from '../services/scanner/systemDiscovery'
 import { scanCoordinator } from '../services/scanner/scanCoordinator'
+import { analysisCoordinator } from '../services/ai/analysisCoordinator'
+
 
 
 export function registerIpcHandlers(mainWindow: BrowserWindow): void {
@@ -115,5 +117,59 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       )
     }
   )
+
+  // Feature 2: AI File Understanding & Semantic Classification
+  ipcMain.handle(IPC_CHANNELS.AI_START_ANALYSIS, async (_event, options: any) => {
+    if (!options || typeof options !== 'object') {
+      return { started: false, jobId: '', error: 'Invalid analysis options payload' }
+    }
+
+    const safeOptions = {
+      scanId: typeof options.scanId === 'string' ? options.scanId : undefined,
+      selectedFileIds: Array.isArray(options.selectedFileIds)
+        ? options.selectedFileIds.filter((id: unknown) => typeof id === 'string')
+        : undefined,
+      generateSummaries: Boolean(options.generateSummaries),
+      forceReanalyze: Boolean(options.forceReanalyze),
+      maxConcurrency: typeof options.maxConcurrency === 'number' ? options.maxConcurrency : 3,
+      userConsentGiven: Boolean(options.userConsentGiven)
+    }
+
+    return await analysisCoordinator.startAnalysis(mainWindow, safeOptions)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_CANCEL_ANALYSIS, async (_event, jobId: string) => {
+    if (!jobId || typeof jobId !== 'string') {
+      return { cancelled: false }
+    }
+    return analysisCoordinator.cancelAnalysis(jobId)
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.AI_GET_RESULTS,
+    async (_event, offset?: number, limit?: number, category?: string, query?: string) => {
+      const safeOffset = typeof offset === 'number' && offset >= 0 ? offset : 0
+      const safeLimit = typeof limit === 'number' && limit > 0 && limit <= 500 ? limit : 100
+      const safeCategory = typeof category === 'string' ? category : 'all'
+      const safeQuery = typeof query === 'string' ? query.trim() : ''
+      return analysisCoordinator.getResults(safeOffset, safeLimit, safeCategory, safeQuery)
+    }
+  )
+
+  ipcMain.handle(IPC_CHANNELS.AI_GET_SETTINGS, async () => {
+    return analysisCoordinator.getSettings()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_UPDATE_SETTINGS, async (_event, settings: any) => {
+    if (!settings || typeof settings !== 'object') {
+      return { success: false, error: 'Invalid settings payload' }
+    }
+    return analysisCoordinator.updateSettings(settings)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_TEST_CONNECTION, async () => {
+    return await analysisCoordinator.testConnection()
+  })
 }
+
 
